@@ -1,6 +1,14 @@
 from utils.career_advice import career_advice
 from utils.recommendation import recommend_companies
 from utils.pdf_generator import generate_report
+from utils.chatbot import ask_hirehive
+from utils.resume_ai import ai_resume_review
+from utils.resume_analyzer import (
+    extract_resume_text,
+    detect_skills,
+    calculate_ats_score,
+    missing_skills
+)
 
 import streamlit as st
 import pandas as pd
@@ -33,13 +41,15 @@ page = st.sidebar.radio(
     [
         "Home",
         "Placement Prediction",
+        "📄 Resume Analyzer",
+        "🤖 HireHive AI",
         "Dashboard",
         "About"
     ]
 )
 
 # =====================================================
-# HOME PAGE
+# HOME
 # =====================================================
 
 if page == "Home":
@@ -51,8 +61,15 @@ if page == "Home":
     st.write("""
 Welcome to HireHive.
 
-This application predicts whether a student is likely to get placed
-using Machine Learning and provides personalized career guidance.
+This application predicts a student's placement probability using Machine Learning.
+
+Features:
+- Placement Prediction
+- Resume Analyzer
+- ATS Score
+- AI Career Chatbot
+- Company Recommendation
+- Career Suggestions
 """)
 
     st.markdown("---")
@@ -62,8 +79,6 @@ using Machine Learning and provides personalized career guidance.
     c1.metric("Model", "Random Forest")
     c2.metric("Dataset", "45,000 Students")
     c3.metric("Accuracy", "100%")
-
-    st.info("Select 'Placement Prediction' from the left sidebar to begin.")
 
 # =====================================================
 # PLACEMENT PREDICTION
@@ -153,9 +168,7 @@ elif page == "Placement Prediction":
         0
     )
 
-    predict = st.button("Predict Placement")
-
-    if predict:
+    if st.button("Predict Placement"):
 
         gender_map = {
             "Female":0,
@@ -197,7 +210,6 @@ elif page == "Placement Prediction":
 
         prediction = model.predict(input_df)[0]
         probability = model.predict_proba(input_df)[0][1] * 100
-        st.markdown("---")
 
         st.header("Prediction Result")
 
@@ -211,38 +223,7 @@ elif page == "Placement Prediction":
             f"{probability:.2f}%"
         )
 
-        st.progress(probability / 100)
-
-        st.write("")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.metric(
-                "Readiness Score",
-                f"{round(probability/10,1)}/10"
-            )
-
-        with col2:
-
-            if probability >= 80:
-                status = "Excellent"
-
-            elif probability >= 60:
-                status = "Good"
-
-            else:
-                status = "Needs Improvement"
-
-            st.metric("Status", status)
-
-        st.markdown("---")
-
-        # =====================================================
-        # COMPANY RECOMMENDATION
-        # =====================================================
-
-        st.subheader("🏢 Recommended Companies")
+        st.progress(probability/100)
 
         companies = recommend_companies(
             probability,
@@ -251,16 +232,10 @@ elif page == "Placement Prediction":
             internships
         )
 
+        st.subheader("🏢 Recommended Companies")
+
         for company in companies:
-            st.write(f"✅ {company}")
-
-        st.markdown("---")
-
-        # =====================================================
-        # CAREER ADVICE
-        # =====================================================
-
-        st.subheader("🎯 Career Improvement Suggestions")
+            st.success(company)
 
         tips = career_advice(
             cgpa,
@@ -271,26 +246,20 @@ elif page == "Placement Prediction":
             backlogs
         )
 
+        st.subheader("🎯 Career Suggestions")
+
         for tip in tips:
-            st.write(tip)
-
-        st.markdown("---")
-
-        # =====================================================
-        # PDF REPORT
-        # =====================================================
-
-        st.subheader("📄 Placement Report")
+            st.write("✅", tip)
 
         report_data = {
-            "Age": age,
-            "Gender": gender,
-            "Degree": degree,
-            "Branch": branch,
-            "Prediction": "Placed" if prediction == 1 else "Not Placed",
-            "Probability": probability,
-            "Companies": companies,
-            "Suggestions": tips
+            "Age":age,
+            "Gender":gender,
+            "Degree":degree,
+            "Branch":branch,
+            "Prediction":"Placed" if prediction==1 else "Not Placed",
+            "Probability":probability,
+            "Companies":companies,
+            "Suggestions":tips
         }
 
         generate_report(
@@ -298,27 +267,306 @@ elif page == "Placement Prediction":
             report_data
         )
 
-        with open("Placement_Report.pdf", "rb") as pdf_file:
+        with open("Placement_Report.pdf","rb") as pdf:
 
             st.download_button(
-                label="⬇ Download Placement Report",
-                data=pdf_file,
-                file_name="HireHive_Placement_Report.pdf",
+                "📄 Download Placement Report",
+                pdf,
+                file_name="HireHive_Report.pdf",
                 mime="application/pdf"
+            )# =====================================================
+# RESUME ANALYZER
+# =====================================================
+
+elif page == "📄 Resume Analyzer":
+
+    st.title("📄 AI Resume Analyzer")
+
+    st.write(
+        "Upload your resume to analyze skills, ATS score and missing skills."
+    )
+
+    uploaded_file = st.file_uploader(
+        "Upload Resume (PDF Only)",
+        type=["pdf"]
+    )
+
+    if uploaded_file is not None:
+
+        text = extract_resume_text(uploaded_file)
+        with st.spinner("🤖 AI is analyzing your resume..."):
+
+            ai_review = ai_resume_review(text)
+        skills = detect_skills(text)
+
+        ats_score = calculate_ats_score(
+            text,
+            skills
+        )
+
+        missing = missing_skills(skills)
+
+        # --------------------------
+        # ATS SCORE
+        # --------------------------
+
+        st.subheader("📊 ATS Score")
+
+        st.metric(
+            "Overall ATS Score",
+            f"{ats_score}/100"
+        )
+
+        st.progress(ats_score / 100)
+
+        # --------------------------
+        # Resume Rating
+        # --------------------------
+
+        if ats_score >= 85:
+            st.success("⭐⭐⭐⭐⭐ Excellent Resume")
+
+        elif ats_score >= 70:
+            st.success("⭐⭐⭐⭐ Very Good Resume")
+
+        elif ats_score >= 50:
+            st.warning("⭐⭐⭐ Average Resume")
+
+        else:
+            st.error("⭐⭐ Needs Improvement")
+
+        st.markdown("---")
+        st.subheader("🤖 AI Resume Review")
+
+        st.write(ai_review)
+        # --------------------------
+        # Skills Found
+        # --------------------------
+
+        st.subheader("💻 Skills Detected")
+
+        if len(skills) == 0:
+
+            st.warning("No technical skills detected.")
+
+        else:
+
+            col1, col2 = st.columns(2)
+
+            half = len(skills) // 2
+
+            with col1:
+
+                for skill in skills[:half]:
+                    st.success(skill)
+
+            with col2:
+
+                for skill in skills[half:]:
+                    st.success(skill)
+
+        st.markdown("---")
+
+        # --------------------------
+        # Missing Skills
+        # --------------------------
+
+        st.subheader("❌ Recommended Skills")
+
+        for skill in missing[:15]:
+
+            st.write("🔹", skill)
+
+        st.markdown("---")
+
+        # --------------------------
+        # Resume Statistics
+        # --------------------------
+
+        words = len(text.split())
+
+        characters = len(text)
+
+        c1, c2 = st.columns(2)
+
+        c1.metric(
+            "Words",
+            words
+        )
+
+        c2.metric(
+            "Characters",
+            characters
+        )
+
+        st.markdown("---")
+
+        # --------------------------
+        # Resume Preview
+        # --------------------------
+
+        st.subheader("📄 Resume Content")
+
+        st.text_area(
+            "",
+            text,
+            height=350
+        )
+
+        st.markdown("---")
+
+        # --------------------------
+        # Resume Suggestions
+        # --------------------------
+
+        st.subheader("🎯 Resume Improvement Tips")
+
+        if ats_score >= 85:
+
+            st.success(
+                "Excellent Resume. Keep updating projects and achievements."
             )
-            # =====================================================
+
+        else:
+
+            tips = []
+
+            if "internship" not in text.lower():
+                tips.append("✔ Add Internship Experience")
+
+            if "project" not in text.lower():
+                tips.append("✔ Add More Projects")
+
+            if "github" not in text.lower():
+                tips.append("✔ Add GitHub Profile")
+
+            if "linkedin" not in text.lower():
+                tips.append("✔ Add LinkedIn Profile")
+
+            if len(skills) < 8:
+                tips.append("✔ Learn More Technical Skills")
+
+            if ats_score < 60:
+                tips.append("✔ Improve Resume Formatting")
+
+            if len(tips) == 0:
+                st.success("No major improvements required.")
+
+            else:
+
+                for tip in tips:
+                    st.write(tip)
+
+        st.markdown("---")
+
+        # --------------------------
+        # Download Report
+        # --------------------------
+
+        st.info(
+            "AI Resume Review will be available in the next update."
+        )# =====================================================
+# HIREHIVE AI CHATBOT
+# =====================================================
+
+elif page == "🤖 HireHive AI":
+
+    st.title("🤖 HireHive AI Assistant")
+
+    st.write(
+        """
+Ask me anything about:
+
+• Placements
+• Resume Building
+• ATS Score
+• DSA
+• Programming
+• Python
+• Java
+• AI & ML
+• Interviews
+• Career Guidance
+"""
+    )
+
+    # Chat History
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Show previous messages
+    for message in st.session_state.messages:
+
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    prompt = st.chat_input("Ask HireHive AI...")
+
+    if prompt:
+
+        st.session_state.messages.append(
+            {
+                "role": "user",
+                "content": prompt
+            }
+        )
+
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.spinner("HireHive AI is Thinking..."):
+
+            try:
+
+                answer = ask_hirehive(prompt)
+
+            except Exception as e:
+
+                answer = f"Error:\n\n{e}"
+
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": answer
+            }
+        )
+
+        with st.chat_message("assistant"):
+
+            st.markdown(answer)
+
+    st.markdown("---")
+
+    if st.button("🗑 Clear Chat"):
+
+        st.session_state.messages = []
+
+        st.rerun()
+
+# =====================================================
 # DASHBOARD
 # =====================================================
 
 elif page == "Dashboard":
 
-    st.title("📊 Dashboard")
+    st.title("📊 HireHive Dashboard")
 
     c1, c2, c3 = st.columns(3)
 
-    c1.metric("Dataset", "45,000 Students")
-    c2.metric("Model", "Random Forest")
-    c3.metric("Accuracy", "100%")
+    c1.metric(
+        "Dataset",
+        "45,000 Students"
+    )
+
+    c2.metric(
+        "Model",
+        "Random Forest"
+    )
+
+    c3.metric(
+        "Accuracy",
+        "100%"
+    )
 
     st.markdown("---")
 
@@ -356,49 +604,34 @@ elif page == "Dashboard":
 
     st.markdown("---")
 
+    st.subheader("Model Information")
+
     st.info(
-        "The chart shows which features contribute the most to placement prediction."
+        """
+Model Used : Random Forest
+
+Training Accuracy : 100%
+
+Dataset Size : 45,000 Records
+
+Prediction Type : Binary Classification
+"""
     )
 
-# =====================================================
-# ABOUT
-# =====================================================
+    st.markdown("---")
 
-else:
+    st.subheader("Project Highlights")
 
-    st.title("💼 About HireHive")
+    st.success("✔ Placement Prediction")
 
-    st.write("""
-HireHive is an AI-powered Placement Prediction System.
+    st.success("✔ Resume Analyzer")
 
-The project predicts a student's placement probability using Machine Learning and provides personalized career guidance and company recommendations.
+    st.success("✔ ATS Score")
 
-### Project Workflow
+    st.success("✔ AI Career Chatbot")
 
-1. Data Collection
+    st.success("✔ Company Recommendation")
 
-2. Data Preprocessing
+    st.success("✔ PDF Report Generation")
 
-3. Feature Encoding
-
-4. Random Forest Model Training
-
-5. Placement Prediction
-
-6. Career Guidance
-
-7. Company Recommendation
-
-### Technologies Used
-
-- Python
-- Streamlit
-- Pandas
-- Scikit-Learn
-- Random Forest
-- ReportLab (PDF Generation)
-
-### Team Project
-
-Developed as a Machine Learning academic project.
-""")
+    st.success("✔ Career Suggestions")
